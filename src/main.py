@@ -6,6 +6,23 @@ from enemy import Skeleton
 
 pygame.init()
 
+# Initialiser le mixer de Pygame
+pygame.mixer.init()
+
+# Charger la musique de fond
+pygame.mixer.music.load("../assets/Sounds/fond.mp3")  # Remplacez par le nom de votre fichier MP3
+pygame.mixer.music.set_volume(5)  # Ajustez cette valeur selon vos préférences
+pygame.mixer.music.play(-1)  # Jouer la musique en boucle
+
+# Charger le son de mort
+death_sound = pygame.mixer.Sound("../assets/Sounds/morts.mp3")  # Remplacez par le nom de votre fichier audio
+
+# Charger le son de dégâts
+damage_sound = pygame.mixer.Sound("../assets/Sounds/dégâts.mp3")  # Remplacez par le nom de votre fichier audio
+
+# Charger le son d'attaque
+attack_sound = pygame.mixer.Sound("../assets/Sounds/attaque.mp3")  # Remplacez par le nom de votre fichier audio
+
 # Configurations de base
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 clock = pygame.time.Clock()
@@ -23,6 +40,11 @@ game_button = game_button_img.get_rect(center=(SCREEN_WIDTH/2, SCREEN_HEIGHT/2 -
 start_button_img = pygame.image.load("../assets/images/TutoButton.png")
 start_button_img = pygame.transform.scale(start_button_img, (200, 80))
 start_button = start_button_img.get_rect(center=(SCREEN_WIDTH/2, SCREEN_HEIGHT/2))
+
+# Charger et configurer le bouton New Game
+new_game_button_img = pygame.image.load("../assets/images/GameButton.png")
+new_game_button_img = pygame.transform.scale(new_game_button_img, (200, 80))
+new_game_button = new_game_button_img.get_rect(center=(SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 100))
 
 def spawn_skeleton():
     side = random.choice(["left", "right"])
@@ -63,7 +85,7 @@ class Camera:
         self.camera = pygame.Rect(x, y, self.width, self.height)
 
 # Créer le héros pour le menu
-menu_player = Player(100, SCREEN_HEIGHT // 2 - 75)
+menu_player = Player(100, SCREEN_HEIGHT // 2 - 75, death_sound, damage_sound, attack_sound)
 
 class Pit:
     def __init__(self, x, y, width, height):
@@ -144,12 +166,22 @@ def tutorial_loop():
 
     return True
 
+def spawn_skeletons(skeletons, wave):
+    nbsquelettes = wave * 2  # Nombre de squelettes à générer
+    print(f"Spawning {nbsquelettes} skeletons for wave {wave}")  # Message de débogage
+    for _ in range(nbsquelettes):
+        skeletons.append(spawn_skeleton())
+    print(f"Spawned {nbsquelettes} skeletons")  # Message de débogage
+
 def game_loop():
-    player = Player(100, scaled_height - 350)
+    player = Player(100, scaled_height - 350, death_sound, damage_sound, attack_sound)
     death_timer = 0
     death_delay = 5
     camera = Camera(scaled_width, scaled_height)
-    skeleton = None
+
+    skeletons = []  # Liste pour stocker les squelettes
+    current_wave = 1  # Vague actuelle
+    spawn_skeletons(skeletons, current_wave)  # Appeler la fonction pour faire apparaître les squelettes
 
     # Variables pour le tutoriel de contrôle
     tutorial_phase = 1  # Phase 1: déplacement, Phase 2: saut
@@ -168,13 +200,13 @@ def game_loop():
     while running:
         current_time = pygame.time.get_ticks()
         delta_time = clock.tick(FPS) / 1000
-        
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
 
         keys = pygame.key.get_pressed()
-        
+
         # Détecter si le joueur se déplace
         if keys[pygame.K_q] or keys[pygame.K_d]:
             has_moved = True
@@ -211,14 +243,15 @@ def game_loop():
                 else:
                     tutorial_phase = 2
                     control_start_time = pygame.time.get_ticks()
-            
+
             elif tutorial_phase == 2:
                 if not has_jumped:
                     # Afficher les instructions de saut
                     text_rect = text_zone_img.get_rect(center=(player.x + 100, player.y - 100))
                     screen.blit(text_zone_img, camera.apply(text_rect))
                     controls_font = pygame.font.Font(None, 32)
-                    controls_text = controls_font.render("Appuyez sur Z pour sauter par-dessus le trou", True, (0, 0, 0))
+                    controls_text = controls_font.render("Appuyez sur Z pour sauter", True,
+                                                         (0, 0, 0))
                     text_pos = camera.apply(pygame.Rect(player.x - 50, player.y - 110, 0, 0))
                     screen.blit(controls_text, text_pos)
 
@@ -227,7 +260,7 @@ def game_loop():
                         print("Le héros est tombé dans le trou !")  # Message dans le terminal
                         if not player.is_fall_death:
                             player.start_fall_death()
-                    
+
                     # Vérifier si le joueur est tombé hors de l'écran
                     if player.y > scaled_height + 500:  # Distance de chute
                         player.x = 300  # Position de départ
@@ -239,17 +272,21 @@ def game_loop():
                     player.hitbox.y = player.y + 50
                 else:
                     show_controls = False
-                    skeleton = spawn_skeleton()
+                    skeletons.append(spawn_skeleton())
 
-        # Gérer le squelette seulement après le tutoriel
-        elif not player.is_dead and skeleton is not None:
-            player.check_attack_collision(skeleton)
+        # Vérifier si tous les squelettes de la vague actuelle sont morts
+        if all(not skeleton.is_alive for skeleton in skeletons):
+            current_wave += 1  # Passer à la vague suivante
+            print(f"Vague {current_wave} apparaît !")  # Imprimer le message dans le terminal
+            spawn_skeletons(skeletons, current_wave)  # Faire apparaître les squelettes de la nouvelle vague
+
+        # Dessiner tous les squelettes
+        for skeleton in skeletons:
             if skeleton.is_alive:
+                player.check_attack_collision(skeleton)
                 skeleton.check_player_collision(player)
                 skeleton.update(delta_time, player.x)
-            if not skeleton.is_alive and not skeleton.is_dying:
-                skeleton = spawn_skeleton()
-            skeleton.draw(screen, camera)
+                skeleton.draw(screen, camera)
 
         if player.death_animation_complete:
             death_timer += delta_time
@@ -284,12 +321,17 @@ def menu_loop():
                     # Puis lancer le jeu
                     if game_loop() == False:
                         return False
+                elif new_game_button.collidepoint(mouse_pos):  # Vérifiez si le bouton New Game est cliqué
+                    # Lancer le jeu directement
+                    if game_loop() == False:
+                        return False
 
         # Animation du héros en idle dans le menu
         menu_frame_timer += delta_time
         if menu_frame_timer >= 0.2:
             menu_frame_timer = 0
             menu_current_frame = (menu_current_frame + 1) % len(menu_player.idle_image)
+            
 
         # Effet de survol des boutons
         mouse_pos = pygame.mouse.get_pos()

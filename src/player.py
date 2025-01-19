@@ -1,7 +1,7 @@
 import pygame
 
 class Player:
-    def __init__(self, x, y):
+    def __init__(self, x, y, death_sound, damage_sound, attack_sound):
         # Charger les images d'animation pour chaque direction
         self.idle_image = [pygame.image.load(f"../assets/images/player/idle/HeroKnight_Idle_{i}.png") for i in range(7)] # Image au repos
         self.walk_right = [pygame.image.load(f"../assets/images/player/run/HeroKnight_Run_{i}.png") for i in range(10)]
@@ -82,6 +82,10 @@ class Player:
         self.fall_speed = 0
         self.fall_acceleration = 0.8
 
+        self.death_sound = death_sound  # Stocker le son de mort
+        self.damage_sound = damage_sound  # Stocker le son de dégâts
+        self.attack_sound = attack_sound  # Stocker le son d'attaque
+
     def move(self, keys, delta_time):
         current_time = pygame.time.get_ticks() / 1000
 
@@ -145,6 +149,10 @@ class Player:
                 self.current_frame = 0
                 self.last_attack_time = current_time
                 self.attack_combo_count += 1
+                
+                # Jouer le son d'attaque
+                self.attack_sound.play()  # Jouer le son d'attaque
+                
                 return
 
         # Gérer l'animation de l'attaque en cours
@@ -163,15 +171,19 @@ class Player:
         self.is_moving = False
         self.is_running = False
 
-        if keys[pygame.K_q]:
+        if keys[pygame.K_q]:  # Déplacement vers la gauche
             print("left")
             self.x -= self.speed
             self.is_moving = True
             self.direction = "left"
-        if keys[pygame.K_d]:
+            if self.is_attacking:  # Si le joueur attaque en se déplaçant vers la gauche
+                self.attack_sprites = self.attack1_sprites  # Utiliser les sprites d'attaque gauche
+        if keys[pygame.K_d]:  # Déplacement vers la droite
             self.x += self.speed
             self.is_moving = True
             self.direction = "right"
+            if self.is_attacking:  # Si le joueur attaque en se déplaçant vers la droite
+                self.attack_sprites = self.attack1_sprites  # Utiliser les sprites d'attaque droite
 
         if keys[pygame.K_LSHIFT]:
             self.is_running = True
@@ -258,13 +270,11 @@ class Player:
             screen.blit(self.jump_image[self.current_frame % len(self.jump_image)], (draw_x, draw_y))
         elif self.is_falling:
             screen.blit(self.fall_image[self.current_frame % len(self.fall_image)], (draw_x, draw_y))
-        elif self.is_moving:
+        else:
             if self.direction == "left":
                 screen.blit(self.walk_left[self.current_frame], (draw_x, draw_y))
             else:
                 screen.blit(self.walk_right[self.current_frame], (draw_x, draw_y))
-        else:
-            screen.blit(self.idle_image[self.current_frame % len(self.idle_image)], (draw_x, draw_y))
 
         # Debug: dessiner les hitboxes (à commenter en production)
         # if camera:
@@ -289,6 +299,9 @@ class Player:
             self.current_frame = 0
             self.hurt_timer = 0
             
+            # Jouer le son de dégâts
+            self.damage_sound.play()  # Jouer le son de dégâts
+            
             # Vérifier si le joueur est mort
             if self.current_health <= 0:
                 self.start_death()
@@ -301,6 +314,9 @@ class Player:
         self.is_moving = False
         self.is_jumping = False
         self.is_falling = False
+        
+        # Jouer le son de mort
+        self.death_sound.play()  # Jouer le son de mort
 
     def start_fall_death(self):
         """Démarre l'animation de chute mortelle"""
@@ -328,7 +344,7 @@ def main():
     clock = pygame.time.Clock()
 
     # Création du joueur
-    player = Player(200, 300)
+    player = Player(200, 300, death_sound, damage_sound, attack_sound)
 
     running = True
     while running:
